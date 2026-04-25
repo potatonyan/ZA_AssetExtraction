@@ -1,4 +1,3 @@
-
 import json
 import os
 import copy
@@ -43,9 +42,9 @@ class Coords:
             x, y = stream.take("hh")
         else:
             y, x = stream.take("hh")
-        
+
         return Coords(x, y)
-    
+
     def __repr__(self):
         return "({}, {})".format(self.x, self.y)
 
@@ -56,7 +55,7 @@ class ActorDescLocation:
     """
     Describes an actor description's location in a way that can be saved
     to a json file.
-    
+
     Used for the spriteNames.json file.
     """
 
@@ -97,7 +96,7 @@ class BoundingBox:
     maxX: Optional[int] = None
     minY: Optional[int] = None
     maxY: Optional[int] = None
-    
+
     def updateMaxAndMin(self, coords):
         if isinstance(coords, list):
             for p in coords:
@@ -109,7 +108,7 @@ class BoundingBox:
         elif isinstance(coords, tuple):
             x = coords[0]
             y = coords[1]
-    
+
         if self.minX == None:
             self.minX = x
             self.maxX = x
@@ -123,7 +122,7 @@ class BoundingBox:
 
     def width(self):
         return self.maxX - self.minX
-    
+
     def height(self):
         return self.maxY - self.minY
 
@@ -155,7 +154,7 @@ class BossCommand:
             lowName = None
             highName = None
             shouldDouble = False
-        
+
         if lowName:
             if shouldDouble:
                 self.namedParams[lowName] = self.paramLow * 2
@@ -163,7 +162,7 @@ class BossCommand:
                 self.namedParams[lowName] = self.paramLow
         elif self.paramLow != 0:
             self.namedParams["unusedLowByte"] = self.paramLow
-        
+
         if highName:
             if shouldDouble:
                 self.namedParams[highName] = self.paramHigh * 2
@@ -258,7 +257,7 @@ class Game:
 
     # The CDI disk's filesystem
     _gameData: CdiFileSystem
-    
+
     # `zelda.rtf`
     _mainFile: ResourceFileSystem
     # `zelda_rl.rtf`
@@ -291,12 +290,12 @@ class Game:
         self._parseCommonData()
         self._parseZeldaWeapons()
         self._parseSpriteNames()
-        
+
     def _parseCommonData(self):
         """
         Parse zelda, sparkle & smoke effects, loot, weapons, and HUD sprites.
         """
-        
+
         # The special "zinit" file is stored next to other cells, but is not a cell. zinit is
         # probably short for "zelda init".
         #
@@ -304,6 +303,12 @@ class Game:
         # Data record 1 has zelda's sprites in a Sprite Tree.
         # Video record 0 has loot and HUD sprites.
         zinit = self._mainFile.subFiles["zinit"]
+        print(f"zinit has {len(zinit.videoSizes)} video records")
+        print(f"zinit has {len(zinit.dataSizes)} data records")
+        print(f"zinit has {len(zinit.audioSizes)} audio records")
+        print(f"Video record sizes: {zinit.videoSizes}")
+        print(f"Data record sizes: {zinit.dataSizes}")
+
         commonData = zinit.getRecord(0, kind="data")
         commonResources = ResourceTree.parseFromStream(StructStream(commonData, endianPrefix=">"))
 
@@ -350,7 +355,7 @@ class Game:
         # Unpack zelda's sprites. The sprite tree only has one top-level item, since it's just zelda.
         tree = unpackSpriteTree(zeldaSpriteData, zeldaPalette, "RGBA")
         self.zeldaActor.description._assignSprites(tree.elements[0])
-        
+
         # Loot and HUD sprites are mixed together. The video record starts with a pointer array with
         # the sprite indices, then the sprite data follows.
         hudSpriteStream = StructStream(zinit.getRecord(0, kind="video"), endianPrefix=">")
@@ -358,10 +363,26 @@ class Game:
         self.heartSprites = hudSprites[:3]
         self.rupeeCounterSprite = hudSprites[4]
         self.lootActorDesc.groups[0].sprites = hudSprites
-    
+        self.hudSprites = hudSprites
+
+        self.zinitVideoRecords = []
+        for i in range(len(zinit.videoSizes)):
+            if i == 0:
+                # Already processed as hudSprites
+                self.zinitVideoRecords.append(hudSprites)
+            else:
+                recordStream = StructStream(zinit.getRecord(i, kind="video"), endianPrefix=">")
+                try:
+                    sprites = [decompressSprite(s, hudPalette, "RGBA") for s in unpackPointerArray(recordStream).elements]
+                    self.zinitVideoRecords.append(sprites)
+                except:
+                    # Might not be sprite data - could be raw image or other format
+                    print(f"zinit video record {i} is not sprite array format")
+                    self.zinitVideoRecords.append(None)
+
     def _parseZeldaWeapons(self):
         """Parse each of the attacks for zelda's weapons. The attack and weapon format is not well understood."""
-        
+
         # The special "invent" file is stored next to other cells, but is not a cell.
         # Data record 0: ???
         # Data record 1: Inventory metadata as a Resource Tree.
@@ -369,6 +390,9 @@ class Game:
         inventoryDataRaw = self._mainFile.subFiles["invent"].getRecord(1, "data")
         inventoryData = ResourceTree.parseFromStream(StructStream(inventoryDataRaw, endianPrefix=">"))
 
+        inventFile = self._mainFile.subFiles["invent"]
+        print(f"invent has {len(inventFile.videoSizes)} video records")
+        print(f"invent has {len(inventFile.dataSizes)} data records")
         # The invent metadata sections are:
         #   labels: An array of null-terminated strings. These are the names of the sub-files for each weapon,
         #           in _mainFile. The array order is the same as in zelda's inventory, shifted by +1. So the
@@ -376,7 +400,7 @@ class Game:
         #           The game only loads the currently equipped weapon's file in memory.
         #
         weaponFiles = [s.takeNullTermString().decode('ascii') for s in inventoryData.children["labels"].elements]
-        
+
         # Parse each weapon file.
         self.weapons: Dict[str, Attack] = {}
         bar = tqdm(total=len(weaponFiles))
@@ -390,7 +414,7 @@ class Game:
     def _parseZeldaWeapon(self, filename: str, id: int) -> "Attack":
         """Parse one weapon from its definition file. `id` is the weapon item's id."""
 
-        # Some weapons share definition files. Each file has the id of one of the weapons (the lowest one, 
+        # Some weapons share definition files. Each file has the id of one of the weapons (the lowest one,
         # I think?), so if the id doesn't match we can infer that this file is being shared.
         if str(id) not in filename:
             sharedWithWeapon = SPELL_LOOKUP[int(filename[2:])]
@@ -436,7 +460,7 @@ class Game:
         map = self._mainFile.subFiles[mapSubfileName].getBytes()
         stream = StructStream(map, endianPrefix=">")
         return ResourceFileSystem(stream, self._gameData.files[realFileName])
-    
+
     def _parseSpriteNames(self):
         """
         Parse the sprite names file. See `spriteNames_format.md` for more info.
@@ -449,7 +473,7 @@ class Game:
         # Reset the current maps.
         self.spriteNames: Dict[str, List[List[ActorDescLocation]]] = {}
         self.spriteNameReverseLookup: Dict[ActorDescLocation, str] = {}
-        
+
         variants: List[dict]
         for name, variants in rawData.items():
             parsedVariants: List[List[ActorDescLocation]] = []
@@ -466,7 +490,7 @@ class Game:
 
                     # Ensure no locations are duplicated.
                     assert parsedLoc not in self.spriteNameReverseLookup, parsedLoc
-                    
+
                     # Add to both lookup tables.
                     self.spriteNameReverseLookup[parsedLoc] = name
                     parsedLocations.append(parsedLoc)
@@ -486,7 +510,7 @@ class Game:
         for name in self._underFiles.subFiles:
             if duplicates or name not in self._overFiles.subFiles:
                 yield (name, False)
-    
+
     def cellDuplicateNames(self) -> Iterator[str]:
         """
         Returns an iterator over all cell names that appear in both the overworld
@@ -505,10 +529,10 @@ class Game:
         If `duplicates=False` and a cell is in both the Overworld and
         Underworld, only the Overworld version is returned.
         """
-        
+
         if useTqdm:
             bar = tqdm(total = self.totalCellCount())
-        
+
         try:
             for name in self._overFiles.subFiles:
                 if useTqdm:
@@ -526,7 +550,7 @@ class Game:
         finally:
             if useTqdm:
                 bar.close()
-    
+
     def totalCellCount(self) -> int:
         """Get the total number of cells in the game."""
         return len(self._overFiles.subFiles) + len(self._underFiles.subFiles)
@@ -548,7 +572,7 @@ class Game:
         if libraryScriptFolder and libraryScriptFolder[-1] != "/":
             libraryScriptFolder += "/"
         bar = tqdm(total=len(self._overFiles.subFiles) + len(self._underFiles.subFiles))
-        
+
         def exportWorld(folder: str, names: List[str], isOverworld: bool):
             """
             Sub-function to export a single world. Assumes that `folder` DOES NOT
@@ -569,17 +593,17 @@ class Game:
                 # easier and enables nice syntax highlighting.
                 with open("{}/{}.py".format(folder, name), "w") as f:
                     f.write(cell._prettyPrintScripts())
-                
+
                 # Advance the progress bar.
                 bar.update(1)
-        
+
         # Apply that sub-function to both overworld and underworld.
         try:
             exportWorld(scriptPath + "overworld", self._overFiles.subFiles.keys(), True)
             exportWorld(scriptPath + "underworld", self._underFiles.subFiles.keys(), False)
         finally:
             bar.close()
-        
+
         if libraryScriptFolder:
             files = os.listdir(libraryScriptFolder)
             for file in files:
@@ -600,22 +624,22 @@ class Game:
 
         Raises an `Exception` if the cell does not exist.
         """
-        
+
         if isOverworld == None:
             # Figure out if the cell is in the overworld or underworld.
             if name in self._overFiles.subFiles:
                 isOverworld = True
-            
+
             if name in self._underFiles.subFiles:
                 if isOverworld != None:
                     if not silenceWarning:
                         print("Warning: cell", name, "exists in both overworld and underworld. Using overworld version.")
                 else:
                     isOverworld = False
-            
+
             if isOverworld == None:
                 raise Exception("Cell {} does not exist in either overworld or underworld".format(name))
-        
+
         if isOverworld:
             file = self._overFiles
             parsed = self.overworldCells
@@ -624,10 +648,10 @@ class Game:
             file = self._underFiles
             parsed = self.underworldCells
             worldName = "underworld"
-        
+
         if name not in file.subFiles:
             raise Exception("Cell {} does not exist in {}".format(name, worldName))
-        
+
         # Is the cell in the cache?
         if name not in parsed:
             # Parse and cache it.
@@ -638,7 +662,7 @@ class Game:
     def parseAllCells(self, refresh = False):
         """
         Force all cells to be parsed. Provides a tqdm bar.
-        
+
         If `refresh=True`, all previously parsed cells are deleted from the cell
         cashe first.
         """
@@ -657,12 +681,12 @@ class Game:
         for _ in self.cells():
             pass
         return
-        
+
         bar = tqdm(total=len(self._overFiles.subFiles) + len(self._underFiles.subFiles))
         errorOverworldCells = []
         for name, file in self._overFiles.subFiles.items():
             bar.set_description("overworld: " + name)
-            
+
             try:
                 if name not in self.overworldCells:
                     self.overworldCells[name] = self._parseCell(file, name, True)
@@ -671,14 +695,14 @@ class Game:
             except:
                 print("Error while parsing overworld", name)
                 errorOverworldCells.append(name)
-            
+
             bar.update(1)
-            
+
         errorUnderworldCells = []
-        
+
         for name, file in self._underFiles.subFiles.items():
             bar.set_description("underworld: " + name)
-            
+
             try:
                 if name not in self.underworldCells:
                     self.underworldCells[name] = self._parseCell(file, name, False)
@@ -687,11 +711,11 @@ class Game:
             except:
                 print("Error while parsing underworld", name)
                 errorUnderworldCells.append(name)
-            
+
             bar.update(1)
 
         bar.close()
-    
+
     def _parseCell(self, file: ResourceFileSystemFolder, name: str, isOverworld: bool) -> "Cell":
         """
         Do the work of actually parsing a cell. This function DOES NOT add
@@ -700,7 +724,7 @@ class Game:
         The reason for a separate function is to implement the sprite name
         lookups.
         """
-        
+
         # Parse the cell normally.
         ret = Cell(file, name, isOverworld)
 
@@ -714,7 +738,7 @@ class Game:
 
             desc.commonName = self.spriteNameReverseLookup[location]
         return ret
-    
+
     def getSpritesByName(self, name: str, variant: int = 0) -> "SpriteGroup":
         """
         Get the sprite group for a given NPC name. Uses the first location in
@@ -725,7 +749,7 @@ class Game:
         location = self._getActorVariantLocationsByName(name, variant)[0]
         desc = self._getActorByLocation(location)
         return desc.groups
-    
+
     def getActorsByName(self, name: str, variant: int = 0) -> List["ActorDescription"]:
         """
         Get all actor descriptions for a given NPC name, across all cells in
@@ -743,7 +767,7 @@ class Game:
         """
         cell = self.getCell(location.cell, location.isOverworld)
         return cell.descriptions[location.index]
-    
+
     def getAllActorVariantsByName(self, name: str) -> List[List["ActorDescription"]]:
         """
         List all the actor descriptions for all the variants of an NPC name.
@@ -769,7 +793,7 @@ class Game:
         variants = self.spriteNames[name]
         assert variant < len(variants), "{} < {}".format(variant, len(variants))
         return variants[variant]
-    
+
     def assignVoiceLines(self):
         """
         Determine which voice lines belong to which cells. This is a rather slow
@@ -798,9 +822,9 @@ class Game:
         cellsInVoiceOrder: List[str] = list(map(
             lambda c: c.name,
             sorted(self.cells(duplicates=False, useTqdm=False), key=lambda c: c.info.voiceStartIndex)))
-        
+
         bar = tqdm(total=self.totalCellCount())
-        
+
         # For each cell, store the indices of voice lines that belong to it, using
         # the next cell's start index to compute the range.
         #
@@ -841,15 +865,15 @@ class Game:
         self.assignVoiceLines()
         if root[-1] != "/":
             root += "/"
-        
+
         if templateFolder and templateFolder[-1] != "/":
             templateFolder += "/"
-        
+
         if libraryScriptFolder and libraryScriptFolder[-1] != "/":
             libraryScriptFolder += "/"
 
         self._exportCommonData(root + "common")
-        
+
         overworldFolder = root + "overworld"
         underworldFolder = root + "underworld"
         for cell in self.cells(duplicates=True):
@@ -861,7 +885,7 @@ class Game:
         self._exportCuriosities(root + "curiosities", templateFolder)
         print("Exporting copy of scripts to separate dir")
         self.exportJustScripts(root + "scripts", libraryScriptFolder)
-    
+
     def _exportCommonData(self, commonRoot):
         """
         Exports all of the game's common data (shared by all cells) to the
@@ -888,14 +912,22 @@ class Game:
             image.save("{}/zelda/sprites/group{}/metadata.png".format(commonRoot, i), "png")
 
         os.makedirs(commonRoot + "/hudSprites", exist_ok=True)
-        sprite: PIL.Image.Image
-        for i, sprite in enumerate(self.lootActorDesc.groups[0].sprites):
+        # sprite: PIL.Image.Image
+        for i, sprite in enumerate(self.hudSprites):
             sprite.save("{}/hudSprites/{}.png".format(commonRoot, i), "png")
+            for recordIdx, sprites in enumerate(self.zinitVideoRecords):
+                if sprites is not None:
+                    recordPath = "{}/zinitVideo/record{}".format(commonRoot, recordIdx)
+                    os.makedirs(recordPath, exist_ok=True)
+                    for spriteIdx, sprite in enumerate(sprites):
+                        sprite.save("{}/sprite{}.png".format(recordPath, spriteIdx), "png")
+
 
         # TODO: Export weapons
-        #for weapon in self.weapons.values():
-        #    os.makedirs("{}/weaponSprites/{}".format(commonRoot, weapon.name), exist_ok=True)
-        #    
+        #for weaponName, weapon in self.weapons.items():
+        #    weaponPath = "{}/weapons/{}".format(commonRoot, weaponName)
+        #    os.makedirs(weaponPath, exists_ok=True)
+
 
     def _exportVoiceLine(self, globalId: int, filename: str):
         """
@@ -916,21 +948,21 @@ class Game:
         if curiositiesRoot.endswith("/"):
             curiositiesRoot = curiositiesRoot[:-1]
         os.makedirs(curiositiesRoot, exist_ok=True)
-        
+
         self._exportCurioProjectileField(curiositiesRoot, templateFolder)
         self._exportCurioWeaknesses(curiositiesRoot)
         self._exportCurioEnemyStats(curiositiesRoot)
-    
+
     def _exportCurioProjectileField(self, curiositiesRoot: str, templateFolder: Optional[str]):
         if templateFolder:
             with open(templateFolder + "Actor Desc Projectile Field.md", "r") as f:
                 template = f.read()
         else:
             template = "{data}"
-        
+
         values = self._gatherValuesForDescFieldByEntityName(lambda desc: str(desc.canUseProjectiles))
         dataText = self._renderValuesByEntityName(values)
-        
+
         with open(curiositiesRoot + "/Actor Desc Projectile Field.md", "w") as f:
             f.write(template.replace("{data}", dataText.strip(), 1))
 
@@ -948,7 +980,7 @@ class Game:
                     valuesPerEntity[desc.commonName][value] = []
                 if cell.name not in valuesPerEntity[desc.commonName][value]:
                     valuesPerEntity[desc.commonName][value].append(cell.name)
-        
+
         return valuesPerEntity
 
     def _renderValuesByEntityName(self, valuesPerEntity: Dict[str, Dict[Any, list[str]]]):
@@ -964,7 +996,7 @@ class Game:
                     cellsWord = "cells" if len(cellNames) > 1 else "cell"
                     text += f"\t{value} on {cellsWord} {cellNameList}\n"
         return text
-    
+
     def _exportCurioWeaknesses(self, curiositiesRoot):
         """
         Exports a human-readable text file listing all the weaknesses for enemies.
@@ -975,7 +1007,7 @@ class Game:
                     if desc.weakToSpell != "None" and desc.bonusDamage != 0:
                         message = "On {} {} is weak to {} and it deals this much bonus damage: {}\n".format(cell.name, desc.commonName, desc.weakToSpell, desc.bonusDamage)
                         f.write(message)
-        
+
     def _exportCurioEnemyStats(self, curiositiesRoot):
         """
         Exports a human-readable text file listing all the combat stats for enemies.
@@ -1037,7 +1069,7 @@ class Game:
                         break
                 if isUsed:
                     continue
-                
+
                 if desc.commonName not in stats:
                     stats[desc.commonName] = {}
 
@@ -1123,9 +1155,9 @@ class BossData:
             elif command.name == BossCommandType.SET_LOOP_START_INDEX:
                 #assert self.loopStartIndex == None
                 self.loopStartIndex = i + 1
-        
+
         # TODO: Parse weapon
-    
+
     def toPseudocode(self) -> str:
         code = "@AllFunctionsEndTheFrame\ndef bossAI():\n"
         if self._startPositionCommand != None:
@@ -1133,12 +1165,12 @@ class BossData:
             y = self._startPositionCommand.namedParams["y"]
             code += f"\tactor.position.x = {x}\n"
             code += f"\tactor.position.y = {y}\n"
-        
+
         if self.loopStartIndex != None:
             loop = self.commands[self.loopStartIndex:]
         else:
             loop = self.commands
-        
+
         importList = {str(command.name) for command in loop if command.name != BossCommandType.LOOP}
         importList.add("wasteOneFrame")
         importList.add("AllFunctionsEndTheFrame")
@@ -1209,7 +1241,7 @@ class Actor:
 
     def __init__(self, stream: StructStream):
         assert len(stream) == 54, len(stream)
-        
+
         # Pointers used at runtime
         pointers = stream.takeRaw(4 * 6)
         assert pointers == b'\0' * (4 * 6), pointers
@@ -1225,9 +1257,9 @@ class Actor:
 
         self.direction: Literal["UP", "RIGHT", "DOWN", "LEFT", "TELEPORT"] \
             = DIRECTION_LOOKUP[direction]
-        
+
         self.animationType = AnimationType(animationType)
-        
+
         assert x == 0 and y == 0, "Nonzero current position: ({}, {})".format(x, y)
         assert touchDuration == 0, "Nonzero touch duration: {}".format(touchDuration)
         assert frame == 0, "Nonzero frame value: {}".format(frame)
@@ -1275,21 +1307,21 @@ class ActorDescription:
 
         self.size = Coords.fromStream(stream, xFirst=False)
         self.groupCount, pointer1, pointer2 = stream.take("HII")
-        
+
         self.maxHealth_maybe, self.useCostOrDefense = stream.take("HH")
         self.baseDamageOrPurchasePrice_maybe, padding = stream.take("HH")
 
         self.collisionSamplePoints: List[Coords] = []
         for _ in range(2):
             self.collisionSamplePoints.append(Coords.fromStream(stream))
-        
+
         unusedSamplePoint = stream.take("I")
         metaType_maybe, lootDropped, weakToSpell = stream.take("HHH")
         interactsWithItem, self.bonusDamage = stream.take("BB")
         projectile, self.unk_0x2b, self.unk_0x2c = stream.take("BBH")
-        
+
         assert len(stream) == 0, stream
-        
+
         assert pointer1 == 0, pointer1
         assert pointer2 == 0, pointer2
         assert padding == 0, padding
@@ -1322,13 +1354,13 @@ class ActorDescription:
         for group, subTree in zip(self.groups, tree.elements):
             group._assignSprites(subTree)
         self.unusedGroups = tree.elements[len(self.groups):]
-        
+
         self.unusedSpritePointer = tree.unusedPointer
 
     def serializeToDict(self) -> dict:
         if len(self.groups) > 0:
             assert isinstance(self.groups[0], SpriteGroup)
-        
+
         ret = copy.copy(self.__dict__)
         """
         ret["groups"] = [g.toPlainDict() for g in self.groups]
@@ -1340,12 +1372,12 @@ class ActorDescription:
         del ret["unusedGroups"]
 
         return ret
-    
+
     def hashOfSpriteGroups(self) -> int:
         if self._cachedHashOfGroups == None:
             self._cachedHashOfGroups = hash(tuple([g.hashOfSprites() for g in self.groups]))
         return self._cachedHashOfGroups
-    
+
     def makeMetadataImages(self, palette: Optional[bytes] = None) -> Optional[List[PIL.Image.Image]]:
         if palette == None:
             oldPalette = None
@@ -1409,7 +1441,7 @@ class SpriteGroup:
         self.unusedSprites: List[PIL.Image.Image] = []
         self.unusedSpritePointer: Optional[int] = None
         self._cachedHash: Optional[int] = None
-    
+
     def _assignSprites(self, tree: PointerArray):
         if len(self.animationFrameOrder) > 0:
             minSpriteCount = max(self.animationFrameOrder) + 1
@@ -1418,9 +1450,9 @@ class SpriteGroup:
         assert minSpriteCount <= len(tree.elements)
         self.sprites = tree.elements[:minSpriteCount]
         self.unusedSprites = tree.elements[minSpriteCount:]
-        
+
         self.unusedSpritePointer = tree.unusedPointer
-    
+
     def serializeToDict(self) -> dict:
         ret = copy.copy(self.__dict__)
         del ret["sprites"]
@@ -1431,14 +1463,14 @@ class SpriteGroup:
         ret["boundingPolygon"] = [asdict(c) for c in self.boundingPolygon]
         """
         return ret
-    
+
     def getMiddleSprite(self) -> PIL.Image.Image:
         """
         Spikes have blank first sprites, so it's better to pick a
         sprite from the middle of the animation.
         """
         return self.sprites[len(self.sprites) // 2]
-    
+
     def hashOfSprites(self) -> int:
         if self._cachedHash == None:
             self._cachedHash = hash(tuple([hash(s.tobytes()) for s in self.sprites]))
@@ -1473,7 +1505,7 @@ class CycleDefinition:
         self.delay: int
         self.currentOffset: int
         self.timer: int
-        
+
         assert len(stream) == 0, stream
 
         self.mode: Optional[Literal["IncreaseOnly", "Oscillate"]]
@@ -1502,20 +1534,20 @@ class CycleDefinition:
         else:
             self.errors.append("Unknown stagger mode {}".format(staggerMode))
             self.staggerMode = None
-        
+
         self.enabled = enabled != 0
         self.hasLooped = hasLooped != 0
-    
+
     def getRange(self) -> range:
         return range(self.start, self.start + self.length)
 
     def isUsed(self, image: PIL.Image.Image, palette: bytes) -> bool:
         if not self.enabled:
             return False
-        
+
         if self.length == 0:
             return False
-        
+
         usedColors = [p for count, p in image.getcolors()]
         atLeastOneUsedColor = False
         for i in self.getRange():
@@ -1525,9 +1557,9 @@ class CycleDefinition:
         if not atLeastOneUsedColor:
             #print("Skipping cycler; no pixels use the colors")
             return False
-        
+
         return True
-    
+
     def overlapsWith(self, other: Self) -> bool:
         r = self.getRange()
         for color in other.getRange():
@@ -1539,12 +1571,12 @@ class CellInfo:
     def __init__(self, data: bytes, isOverworld: bool):
         stream = StructStream(data, endianPrefix=">")
         tree = ResourceTree.parseFromStream(stream)
-        
+
         self.infoUnk0, hasSprites, hasPaletteCycling = tree.children["info"].elements[0].peek("HHH")
         self.hasSprites = hasSprites != 0
         self.hasPaletteCycling = hasPaletteCycling != 0
         self.isOverworld = isOverworld
-        
+
         self.infoUnk0: int
 
         self.cyclers = [CycleDefinition(s) for s in tree.children["cycle"].elements]
@@ -1569,7 +1601,7 @@ class CellInfo:
         self.treeHeightBoxes = [TreeHeightRegion.fromStream(s) for s in tree.children["tree"].elements]
         self._cachedTreeHeightRegionImage: Optional[PIL.Image.Image] = None
         self.unusedSpritePointer: Optional[int] = None
-    
+
     def makeTreeHeightImage(self, parentCell: "Cell") -> PIL.Image.Image:
         if self._cachedTreeHeightRegionImage == None:
             effectImage = PIL.Image.new("P", parentCell.background.size, 4)
@@ -1614,9 +1646,9 @@ class Animation:
             print("Malformed animation table: expected {} bytes, found {}" \
                   .format(tableSize * 2, len(tableStream)))
             self.error = True
-        
+
         table: List[int] = list(tableStream.take("{}H".format(tableSize), fillZeros=True))
-        
+
         self.commands: List[str] = []
         for encoded in table:
             # X and Y are encoded as bias-signed nibbles.
@@ -1625,7 +1657,7 @@ class Animation:
 
             param = (encoded >> 8) & 0xF
             opcode = (encoded >> 12) & 0xF
-            
+
             if opcode == 0:
                 command = "nop"
             elif opcode == 1:
@@ -1659,12 +1691,12 @@ class Cell:
         self._parseScripts(subFile)
         self._parseCollisionData(subFile)
 
-    
+
     def _parseActors(self, data) -> Tuple[List["Actor"], List["ActorDescription"]]:
         tree = ResourceTree.parseFromStream(StructStream(data, endianPrefix=">"))
         self.actors = [Actor(s) for s in tree.children["sp_cast"].elements]
         self.bossData: Optional[BossData] = None
-        
+
         self._vectorData: Optional[StructStream] = None
         self._tableData: Optional[StructStream] = None
         self._weaponData: Optional[StructStream] = None
@@ -1680,7 +1712,7 @@ class Cell:
             for desc in self.descriptions:
                 desc.groups = groups[groupIndex:groupIndex + desc.groupCount]
                 groupIndex += desc.groupCount
-        
+
             if "sp_vector" in tree.children and len(tree.children["sp_vector"].elements) > 0 \
                     and len(tree.children["sp_vector"].elements[0]) > 0:
                 table = tree.children["sp_table"].elements[0]
@@ -1698,7 +1730,7 @@ class Cell:
 
             if "wp_cmds" in tree.children:
                 self._weaponData = tree.children["wp_cmds"]
-            
+
             if "kp_init" in tree.children:
                 boss_actors = [d for d in self.descriptions if d.type_maybe == ActorType.BOSS]
                 assert len(boss_actors) == 1, boss_actors
@@ -1706,7 +1738,7 @@ class Cell:
                 boss_projectile = None
 
                 self.bossData = BossData(tree, boss_actor, boss_projectile)
-        
+
     def _parseSprites(self, subFile: ResourceFileSystemFolder):
         self.rawPalette = getClut(subFile.getRecord(7, kind="data"))
         self.palette = convertClutToRgba(self.rawPalette, indices=[0, 4])
@@ -1717,18 +1749,18 @@ class Cell:
             if b != 0:
                 hasNonzeroByte = True
                 break
-        
+
         self.unusedSpriteGroups: List[PointerArray] = []
         if hasNonzeroByte and not self.info.hasSprites:
             print("hasSprites false when sprite is present. Cell:", self.name)
         if hasNonzeroByte:
             tree = unpackSpriteTree(sprites, self.palette, paletteMode="RGBA")
             self.info.unusedSpritePointer = tree.unusedPointer
-            
+
             assert  len(self.descriptions) <= len(tree.elements)
             for desc, subTree in zip(self.descriptions, tree.elements):
                 desc._assignSprites(subTree)
-            
+
             self.unusedSpriteGroups = tree.elements[len(self.descriptions):]
 
     def _parseScripts(self, subFile: ResourceFileSystemFolder):
@@ -1747,7 +1779,7 @@ class Cell:
         else:
             self.vars = []
             lastUsedIndex = len(self.descriptions)
-        
+
         self.extraScriptData: List[List[List[bytes]]] = []
         if self.name != "gl6":
             for i in range(lastUsedIndex + 1, len(scriptFileTree.children)):
@@ -1761,7 +1793,7 @@ class Cell:
         colorStream = StructStream(subFile.getRecord(0, kind="data"), endianPrefix=">")
         self.backgroundInitialColors = [colorStream.take("3B") for _ in range(240)]
         self.background = dyuvToRGB(subFile.getRecord(0, kind="video"), 384, 240, self.backgroundInitialColors)
-    
+
     def _parseCollisionData(self, subFile: ResourceFileSystemFolder):
         collisionMap = subFile.getRecord(1, kind="video")
         # The 4 index comes from code.
@@ -1778,7 +1810,7 @@ class Cell:
         #for i, cycler in enumerate(self.info.cyclers):
         #    print("Cycler", i)
         #    display(cycler.__dict__)
-        
+
 
     def showActors(self):
         for i, actor in enumerate(self.actors):
@@ -1789,7 +1821,7 @@ class Cell:
         for i, desc in enumerate(self.descriptions):
             print("Description", i)
             display(desc.__dict__)
-    
+
     def showSprites(self):
         display(self.background)
         display(self.collisionImage)
@@ -1814,7 +1846,7 @@ class Cell:
 
     def showScripts(self):
         print(self._prettyPrintScripts())
-    
+
     def unusualDataFlags(self):
         ret = []
         if len(self.extraScriptData) > 0:
@@ -1831,7 +1863,7 @@ class Cell:
     def export(self, root: str, parentGame: Game):
         if len(root) > 0 and root[-1] != "/":
             root += "/"
-        
+
         os.makedirs(root + self.name, exist_ok=True)
 
         folder = root + self.name + "/"
@@ -1842,14 +1874,14 @@ class Cell:
         self._exportScripts(folder)
 
     def _exportData(self, folder: str):
-        
+
         castJson = {
             "actors": self.actors,
             "descriptions": self.descriptions,
         }
         with open(folder + "cast.json", "w") as f:
             json.dump(castJson, f, default=_cellSerializer, indent=2)
-        
+
         convertedPalette = ["#" + self.rawPalette[i:i+3].hex() for i in range(0, len(self.palette), 3)]
         cellJson = {
             "palette": convertedPalette,
@@ -1887,7 +1919,7 @@ class Cell:
                     path = "{}sprites/desc{}/group{}".format(folder, i, j)
                     #os.makedirs(path, exist_ok=True)
                     image.save("{}/metadata.png".format(path), "png")
-    
+
     def _exportVoiceLines(self, folder: str, parentGame: Game):
         os.makedirs(folder + "voice", exist_ok=True)
         for lineId in self.info.voiceLineIds:
@@ -1912,12 +1944,12 @@ class Cell:
                 className = desc.commonName.replace(".", "_")
             else:
                 className = "ActorDescription{}".format(i)
-            
+
             castMembers = [j for j, actor in enumerate(self.actors) if actor.description == desc]
             ret += "# Used for actors: {}\n".format(castMembers)
 
             ret += desc.scripts.prettyPrint(className)
-        
+
         ret += self.scripts.prettyPrint("Cell")
 
         if len(self.vars) > 0:
@@ -1934,11 +1966,11 @@ class Cell:
             for sublist in self.extraScriptData:
                 ret += "\t{},\n".format(sublist)
             ret += "]\n"
-        
+
         if self.bossData:
             ret += "\n# Boss AI\n"
             ret += self.bossData.toPseudocode()
-        
+
         return ret
 
 
@@ -1989,5 +2021,5 @@ def putRect(img: PIL.Image.Image, offset: Coords, size: Coords, color: int):
         rects[(size.x, size.y, color)] = (rectImage, rectMask)
     else:
         rectImage, rectMask = rects[(size.x, size.y, color)]
-    
+
     img.paste(rectImage, (offset.x, offset.y), rectMask)
