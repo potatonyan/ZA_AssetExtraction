@@ -909,10 +909,11 @@ class Game:
                 cell.export(overworldFolder, self)
             else:
                 cell.export(underworldFolder, self)
-        print("Exporting curiosities")
-        self._exportCuriosities(root + "curiosities", templateFolder)
-        print("Exporting copy of scripts to separate dir")
-        self.exportJustScripts(root + "scripts", libraryScriptFolder)
+
+        # print("Exporting curiosities")
+        # self._exportCuriosities(root + "curiosities", templateFolder)
+        # print("Exporting copy of scripts to separate dir")
+        # self.exportJustScripts(root + "scripts", libraryScriptFolder)
 
     def _exportCommonData(self, commonRoot):
         """
@@ -986,17 +987,21 @@ class Game:
 
         # This seems to be outputting the sprites into the folder before the correct one
         # in some cases it seems random
-        for weaponName, weapon in self.weapons.items():
+        for weaponName in sorted(self.weapons.keys(), key=lambda name: self.weapons[name].id):
+            weapon = self.weapons[weaponName]
+            print(f"Exporting weapon: {weaponName} (ID: {weapon.id})")
+            print(f"  Groups: {len(weapon.desc.groups)}")
+            for groupIdx, group in enumerate(weapon.desc.groups):
+                print(f"  Group {groupIdx}: {len(group.sprites)} sprites")
+                print(f"    Sprite hashes: {[hash(s.tobytes()) for s in group.sprites[:2]]}")  # First 2 sprites only
+    
             weaponPath = "{}/weapons/{}".format(commonRoot, weaponName)
             os.makedirs(weaponPath, exist_ok=True)
-
             for groupIdx, group in enumerate(weapon.desc.groups):
                 groupPath = "{}/group{}".format(weaponPath, groupIdx)
                 os.makedirs(groupPath, exist_ok=True)
-
                 for spriteIdx, sprite in enumerate(group.sprites):
-                    sprite.save("{}/sprite{}.png".format(groupPath, spriteIdx),"png")
-
+                    sprite.save("{}/sprite{}.png".format(groupPath, spriteIdx), "png")
 
     def _exportVoiceLine(self, globalId: int, filename: str):
         """
