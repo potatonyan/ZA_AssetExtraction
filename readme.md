@@ -19,7 +19,7 @@ Run on legally acquired files.
 
 **python script**: `ZAassetExtraction.py`
 
--   **Usage**: python ZAassetExtraction.py <input.dat> [output<sub>folder</sub>]
+-   **Usage**: python ZAassetExtraction.py <input.dat> [output_folder]
 -   <span class="underline">da big one</span>
 -   There will be Errors:
     -   `Malformed animation table: expected 148 bytes, found 146`
