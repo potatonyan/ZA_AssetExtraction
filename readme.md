@@ -7,15 +7,15 @@ Run on legally acquired files.
 
 **Mame-tools**: `chdman` used to combine `bincue` into `.chd` format:
 
--   `` `chdman createcd -i "Zelda's Adventure (Europe).cue" -o "Zelda's Adventure (Europe).chd"` ``
+-   `` chdman createcd -i "[INPUT_FILE].cue" -o "[OUTPUT_FILE].chd" ``
 -   **Ensure** `.bin` is in the same location as the `.cue` file!
 -   Probably could make this more flexible and just point to the dir, not specifically the .cue
 -   Having it check for both `.bin/cue` files.
 
 **python script**: `chd_to_dat.py`
 
--   `` `python chd_to_dat.py "Zelda's Adventure (Europe).chd" ``
--   Should output to same dir -> `Zelda's Adventure (Europe).dat`
+-   `` `python chd_to_dat.py "[OUTPUT_FILE].chd" ``
+-   Should output to same dir -> `[OUTPUT_FILE].dat`
 
 **python script**: `ZAassetExtraction.py`
 
