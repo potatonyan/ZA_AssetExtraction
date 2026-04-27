@@ -373,10 +373,26 @@ class Game:
             else:
                 recordStream = StructStream(zinit.getRecord(i, kind="video"), endianPrefix=">")
                 try:
-                    sprites = [decompressSprite(s, hudPalette, "RGBA") for s in unpackPointerArray(recordStream).elements]
-                    self.zinitVideoRecords.append(sprites)
-                except:
-                    # Might not be sprite data - could be raw image or other format
+                    sprites_hud = None
+                    sprites_zelda = None
+
+                    try:
+                        sprites_hud = [decompressSprite(s, hudPalette, "RGBA") for s in unpackPointerArray(recordStream.copy()).elements]
+                    except:
+                        pass
+
+                    try:
+                        sprites_zelda = [decompressSprite(s, zeldaPalette, "RGBA") for s in unpackPointerArray(recordStream.copy()).elements]
+                    except:
+                        pass
+
+                    # Store both to compare
+                    self.zinitVideoRecords.append({
+                        'hud_palette': sprites_hud,
+                        'zelda_palette': sprites_zelda
+                        })
+
+                except Exception as e:
                     print(f"zinit video record {i} is not sprite array format")
                     self.zinitVideoRecords.append(None)
 
@@ -410,6 +426,18 @@ class Game:
             self.weapons[commonName] = self._parseZeldaWeapon(filename, i + 1)
             bar.update(1)
         bar.close()
+
+        # Parse inventory UI video records
+        inventFile = self._mainFile.subFiles["invent"]
+        self.inventVideoRecords = []
+
+        for i in range(len(inventFile.videoSizes)):
+            try:
+                recordData = inventFile.getRecord(i, kind="video")
+                self.inventVideoRecords.append(recordData)
+                print(f"invent video record {i}: {len(recordData)} bytes")
+            except Exception as e:
+                self.inventVideoRecords.append(None)
 
     def _parseZeldaWeapon(self, filename: str, id: int) -> "Attack":
         """Parse one weapon from its definition file. `id` is the weapon item's id."""
@@ -915,18 +943,59 @@ class Game:
         # sprite: PIL.Image.Image
         for i, sprite in enumerate(self.hudSprites):
             sprite.save("{}/hudSprites/{}.png".format(commonRoot, i), "png")
-            for recordIdx, sprites in enumerate(self.zinitVideoRecords):
-                if sprites is not None:
-                    recordPath = "{}/zinitVideo/record{}".format(commonRoot, recordIdx)
-                    os.makedirs(recordPath, exist_ok=True)
-                    for spriteIdx, sprite in enumerate(sprites):
-                        sprite.save("{}/sprite{}.png".format(recordPath, spriteIdx), "png")
+
+        # Export zinit video records
+        for recordIdx, record in enumerate(self.zinitVideoRecords):
+            if recordIdx == 0:
+                # Skip record 0 - already exported as hudSprites
+                continue
+
+            if record is not None and isinstance(record, dict):
+                # Try both palettes
+                for palette_name, sprites in record.items():
+                    if sprites is not None:
+                        recordPath = "{}/zinitVideo/record{}_{}/".format(commonRoot, recordIdx, palette_name)
+                        os.makedirs(recordPath, exist_ok=True)
+                        for spriteIdx, sprite in enumerate(sprites):
+                            sprite.save("{}/sprite{}.png".format(recordPath, spriteIdx), "png")
+            elif record is not None:
+                # Old format (record 0)
+                recordPath = "{}/zinitVideo/record{}/".format(commonRoot, recordIdx)
+                os.makedirs(recordPath, exist_ok=True)
+                for spriteIdx, sprite in enumerate(record):
+                    sprite.save("{}/sprite{}.png".format(recordPath, spriteIdx), "png")
+
+            # Export raw inventory video records for investigation
+            inventPath = "{}/inventVideo".format(commonRoot)
+            os.makedirs(inventPath, exist_ok=True)
+
+            for recordIdx, recordData in enumerate(self.inventVideoRecords):
+                if recordData is not None and len(recordData) > 0:
+                    filepath = "{}/record{}.bin".format(inventPath, recordIdx)
+                    with open(filepath, "wb") as f:
+                        f.write(recordData)
+                        print(f"Exported invent record {recordIdx}: {len(recordData)} bytes to {filepath}")
+                else:
+                    print(f"Skipped invent record {recordIdx}: no data")
 
 
         # TODO: Export weapons
         #for weaponName, weapon in self.weapons.items():
         #    weaponPath = "{}/weapons/{}".format(commonRoot, weaponName)
         #    os.makedirs(weaponPath, exists_ok=True)
+
+        # This seems to be outputting the sprites into the folder before the correct one
+        # in some cases it seems random
+        for weaponName, weapon in self.weapons.items():
+            weaponPath = "{}/weapons/{}".format(commonRoot, weaponName)
+            os.makedirs(weaponPath, exist_ok=True)
+
+            for groupIdx, group in enumerate(weapon.desc.groups):
+                groupPath = "{}/group{}".format(weaponPath, groupIdx)
+                os.makedirs(groupPath, exist_ok=True)
+
+                for spriteIdx, sprite in enumerate(group.sprites):
+                    sprite.save("{}/sprite{}.png".format(groupPath, spriteIdx),"png")
 
 
     def _exportVoiceLine(self, globalId: int, filename: str):
