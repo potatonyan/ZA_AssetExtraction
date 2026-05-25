@@ -61,8 +61,8 @@ SPELL_LOOKUP = {
     9: "GoldNecklace",
     10: "Hammer",
     11: "JadeAmulet",
-    12: "Joust",
-    13: "JadeRing",
+    12: "JadeRing",
+    13: "Joust",
     14: "Dagger",
     15: "LeatherBook",
     16: "EnergyOrb",
@@ -232,7 +232,7 @@ class BossCommandType(LowerCamelCaseMixin, Enum):
 
     RUN_ANIMATION_FOR_DURATION = 40
     RUN_ENEMY_AI_FOR_STEPS = 41
-    
+
     def __str__(self) -> str:
         if self == BossCommandType.RUN_ENEMY_AI_FOR_STEPS:
             # Special camel case exception for "AI" acronym
