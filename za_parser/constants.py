@@ -71,8 +71,8 @@ SPELL_LOOKUP = {
     19: "Pyros",
     20: "RoarStick",
     21: "ShortAxe",
-    22: "Trident",
-    23: "TurquoiseRing",
+    22: "TurquoiseRing",
+    23: "Boomerang",
     24: "Boomerang",
     25: "UnusedSpellId25",
 
