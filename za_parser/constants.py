@@ -49,32 +49,32 @@ class LowerCamelCaseMixin(UpperCamelCaseMixin):
         return ret[0].lower() + ret[1:]
 
 SPELL_LOOKUP = {
-    0: "None",
-    1: "Wand",
-    2: "BowAndArrow",
-    3: "Broadsword",
-    4: "Hourglass",
-    5: "Calm",
-    6: "Feather",
-    7: "RingsOfFire",
-    8: "Firestorm",
-    9: "GoldNecklace",
-    10: "Hammer",
-    11: "JadeAmulet",
-    12: "Joust",
-    13: "JadeRing",
-    14: "Dagger",
-    15: "LeatherBook",
-    16: "EnergyOrb",
-    17: "Noise",
-    18: "OpalAmulet",
-    19: "Pyros",
-    20: "RoarStick",
-    21: "ShortAxe",
-    22: "Trident",
-    23: "TurquoiseRing",
-    24: "Boomerang",
-    25: "UnusedSpellId25",
+    0: "Wand",
+    1: "BowAndArrow",
+    2: "Broadsword",
+    3: "Hourglass",
+    4: "Calm",
+    5: "Feather",
+    6: "RingsOfFire",
+    7: "Firestorm",
+    8: "GoldNecklace",
+    9:  "Hammer",
+    10: "JadeAmulet",
+    11: "Joust",
+    12: "JadeRing",
+    13: "Dagger",
+    14: "LeatherBook",
+    15: "EnergyOrb",
+    16: "Noise",
+    17: "OpalAmulet",
+    18: "Pyros",
+    19: "RoarStick",
+    20: "ShortAxe",
+    21: "MaybeFairyFountain",
+    22: "TurquoiseRing",
+    23: "Boomerang",
+    24: "UnusedSpellMaybe",
+    25: "UnusedSpellMaybeTwo",
 
     50: "DeveloperMistake_VialOfWinds",
     42: "DeveloperMistake_Raft",
@@ -232,7 +232,7 @@ class BossCommandType(LowerCamelCaseMixin, Enum):
 
     RUN_ANIMATION_FOR_DURATION = 40
     RUN_ENEMY_AI_FOR_STEPS = 41
-    
+
     def __str__(self) -> str:
         if self == BossCommandType.RUN_ENEMY_AI_FOR_STEPS:
             # Special camel case exception for "AI" acronym
