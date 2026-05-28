@@ -303,11 +303,11 @@ class Game:
         # Data record 1 has zelda's sprites in a Sprite Tree.
         # Video record 0 has loot and HUD sprites.
         zinit = self._mainFile.subFiles["zinit"]
-        print(f"zinit has {len(zinit.videoSizes)} video records")
-        print(f"zinit has {len(zinit.dataSizes)} data records")
-        print(f"zinit has {len(zinit.audioSizes)} audio records")
-        print(f"Video record sizes: {zinit.videoSizes}")
-        print(f"Data record sizes: {zinit.dataSizes}")
+      #  print(f"zinit has {len(zinit.videoSizes)} video records")
+      #  print(f"zinit has {len(zinit.dataSizes)} data records")
+      #  print(f"zinit has {len(zinit.audioSizes)} audio records")
+      #  print(f"Video record sizes: {zinit.videoSizes}")
+      #  print(f"Data record sizes: {zinit.dataSizes}")
 
         commonData = zinit.getRecord(0, kind="data")
         commonResources = ResourceTree.parseFromStream(StructStream(commonData, endianPrefix=">"))
@@ -393,7 +393,7 @@ class Game:
                         })
 
                 except Exception as e:
-                    print(f"zinit video record {i} is not sprite array format")
+                    # print(f"zinit video record {i} is not sprite array format")
                     self.zinitVideoRecords.append(None)
 
     def _parseZeldaWeapons(self):
@@ -407,8 +407,8 @@ class Game:
         inventoryData = ResourceTree.parseFromStream(StructStream(inventoryDataRaw, endianPrefix=">"))
 
         inventFile = self._mainFile.subFiles["invent"]
-        print(f"invent has {len(inventFile.videoSizes)} video records")
-        print(f"invent has {len(inventFile.dataSizes)} data records")
+        #print(f"invent has {len(inventFile.videoSizes)} video records")
+        #print(f"invent has {len(inventFile.dataSizes)} data records")
         # The invent metadata sections are:
         #   labels: An array of null-terminated strings. These are the names of the sub-files for each weapon,
         #           in _mainFile. The array order is the same as in zelda's inventory, shifted by +1. So the
@@ -435,7 +435,7 @@ class Game:
             try:
                 recordData = inventFile.getRecord(i, kind="video")
                 self.inventVideoRecords.append(recordData)
-                print(f"invent video record {i}: {len(recordData)} bytes")
+                #print(f"invent video record {i}: {len(recordData)} bytes")
             except Exception as e:
                 self.inventVideoRecords.append(None)
 
@@ -975,7 +975,7 @@ class Game:
                     filepath = "{}/record{}.bin".format(inventPath, recordIdx)
                     with open(filepath, "wb") as f:
                         f.write(recordData)
-                        print(f"Exported invent record {recordIdx}: {len(recordData)} bytes to {filepath}")
+                        #print(f"Exported invent record {recordIdx}: {len(recordData)} bytes to {filepath}")
                 else:
                     print(f"Skipped invent record {recordIdx}: no data")
 
@@ -989,11 +989,11 @@ class Game:
         # in some cases it seems random
         for weaponName in sorted(self.weapons.keys(), key=lambda name: self.weapons[name].id):
             weapon = self.weapons[weaponName]
-            print(f"Exporting weapon: {weaponName} (ID: {weapon.id})")
-            print(f"  Groups: {len(weapon.desc.groups)}")
-            for groupIdx, group in enumerate(weapon.desc.groups):
-                print(f"  Group {groupIdx}: {len(group.sprites)} sprites")
-                print(f"    Sprite hashes: {[hash(s.tobytes()) for s in group.sprites[:2]]}")  # First 2 sprites only
+            #print(f"Exporting weapon: {weaponName} (ID: {weapon.id})")
+            #print(f"  Groups: {len(weapon.desc.groups)}")
+            #for groupIdx, group in enumerate(weapon.desc.groups):
+                #print(f"  Group {groupIdx}: {len(group.sprites)} sprites")
+                #print(f"    Sprite hashes: {[hash(s.tobytes()) for s in group.sprites[:2]]}")  # First 2 sprites only
     
             weaponPath = "{}/weapons/{}".format(commonRoot, weaponName)
             os.makedirs(weaponPath, exist_ok=True)
@@ -1815,7 +1815,7 @@ class Cell:
 
     def _parseSprites(self, subFile: ResourceFileSystemFolder):
         self.rawPalette = getClut(subFile.getRecord(7, kind="data"))
-        self.palette = convertClutToRgba(self.rawPalette, indices=[0, 4])
+        self.palette = convertClutToRgba(self.rawPalette, indices=[0, 0x80, 0xA0, 0xC0, 0xE0, 0xFF])
 
         sprites = subFile.getRecord(5, kind="data")
         hasNonzeroByte = False
